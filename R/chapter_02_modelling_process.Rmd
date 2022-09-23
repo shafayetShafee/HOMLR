@@ -1,0 +1,227 @@
+---
+title: "Modelling Process"
+author: "shafayet"
+date: "`r Sys.Date()`"
+output: 
+  cleanrmd::html_document_clean:
+    theme: almond
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+```{css, echo = FALSE}
+body {
+  margin: 0 auto;
+  max-width: 750px;
+  padding: 2rem;
+}
+```
+
+
+
+```{r pkg-setup}
+library(dplyr)
+library(ggplot2)
+
+# Modeling process packages
+library(rsample)
+library(caret) 
+# library(h2o)
+
+# h2o set-up
+# h2o.no_progress() # turn off h2o progress bars
+# h2o.init() # launch h2o
+```
+
+
+```{r dataset}
+# ames housing data
+ames <- AmesHousing::make_ames()
+# ames_h2o <- as.h2o(ames)
+ 
+DT::datatable(ames, options = list(scrollX = TRUE))
+
+class(ames)
+# class(ames_h2o)
+
+# job description data
+churn <- modeldata::attrition %>% 
+  mutate(across(where(is.ordered), .fns = factor, ordered = FALSE))
+
+DT::datatable(churn, options = list(scrollX = TRUE))
+
+# churn_h2o <- as.h2o(churn)
+```
+
+
+## Data spliting using Random Sampling
+
+```{r data-splitting}
+
+# plot function for ames data
+
+plot_dist <- function(train_data, test_data, title) {
+  train_data %>% 
+  ggplot(aes(x = Sale_Price)) +
+  geom_density(trim = TRUE, color = "firebrick", size = 1) +
+  geom_density(data = test_data, trim = TRUE, color = "dodgerblue", size = 1) +
+  ggtitle(title)
+}
+
+
+# using base-R
+set.seed(123)
+
+# In ames data, we are interested in Sales Price (Y)
+
+idx1 <- sample(1:nrow(ames), round(nrow(ames) * 0.7))
+train1 <- ames[idx1, ]
+test1 <- ames[-idx1, ]
+
+p1 <- plot_dist(train1, test1, "Split done with base R")
+
+set.seed(123)
+split_dt <- rsample::initial_split(ames, prop = 0.7)
+train2 <- training(split_dt)
+test2 <- testing(split_dt)
+
+p2 <- plot_dist(train2, test2, "Split done with rsample")
+
+gridExtra::grid.arrange(p1, p2, nrow = 1)
+
+```
+
+#### We have similar distribution of Sales Price in both train and test data set
+
+
+```{r}
+set.seed(123)
+split_strat_num <- initial_split(ames, prop = 0.7, strata = "Sale_Price")
+train_strat_num <- training(split_strat_num)
+test_strat_num <- testing(split_strat_num)
+
+plot_dist(train_strat_num, test_strat_num, 
+          "Stratified Split done for cont var with rsample")
+
+```
+
+So we have a balanced representation of the response distn in both training and test set.
+
+## Data splitting using Stratified sampling  (for Categorical)
+
+```{r data-splitting-stratified}
+prp <- . %>% table %>% prop.table
+
+# original response distribution
+prp(churn$Attrition)
+
+# stratified sampling
+set.seed(123)
+
+split_strat <- initial_split(churn, prop = 0.7, strata = "Attrition")
+train_strat <- training(split_strat)
+test_strat <- testing(split_strat)
+
+# Now response distribution in test and training set
+prp(train_strat$Attrition)
+prp(test_strat$Attrition)
+```
+
+## Class Imbalances
+
+When, in classification problem, class size differs significantly (e.g. 5% defaults, 95% non-defaults). 
+
+Two way to solve this issue of class-imbalance
+
+- up-sampling
+- down-sampling
+
+In up-sampling, freqs of rares class increased by with replacment sampling with bootstrap, while in down-sampling, size of abundant class(es) is decrease to match up the frequency of least prevalent class.
+
+
+A combination of both of these are = Synthetic Minority Over-sampling Technique (SMOTE) is often successfully used.
+
+
+## Meta Engine vs Direct Engine
+
+```{r warning=FALSE}
+# using direct engine
+lm_lm <- lm(Sale_Price ~  ., data = ames)
+glm_lm <- glm(Sale_Price ~  ., data = ames, family = "gaussian")
+
+# using meta engine
+invisible(capture.output(lm_caret <- caret::train(Sale_Price ~  ., data = ames, 
+                         method = "lm")))
+```
+
+Meta engines are like consistent interface to direct engines. Meta engines provide more consistent interface for input specification and output extraction, while less flexible than those direct engines.
+
+
+## Resampling Method
+
+We use resampling method to assess model performance during the training phase. We will use a validation approach where we divide training data into a training sets and validation set and two commonly used techniques are 
+
+- k-fold cross validation
+- bootstrapping
+
+
+### k-fold CV
+
+```{r}
+cv <- rsample::vfold_cv(mtcars, 10)
+
+cv
+```
+
+
+```{r}
+cv$splits %>% 
+  purrr::map2_dfr(seq_along(cv$splits), ~ mtcars %>% 
+            mutate(
+              resample = paste0("Fold_", stringr::str_pad(.y, 2, pad = 0)),
+              ID = row_number(),
+              Data = ifelse(ID %in% .x$in_id, "Training", "validation")
+            )
+  ) %>% 
+  ggplot(aes(resample, ID, fill = Data)) + 
+  geom_tile() +
+  scale_fill_manual(values = c("#f2f2f2", "#AAAAAA")) + 
+  scale_y_reverse("Ovservation ID", breaks = 1:nrow(mtcars)) +
+  labs(x = NULL) +
+  coord_cartesian(expand = FALSE) +
+  theme_classic()
+```
+
+
+### Bootstrapping
+
+In this method, we create some bootstrap samples with the same size as original training data. But each sample contains duplicated values. So the original obs not contained in a particular bootstrap-sample are considered as `Out-of-Bag (OOB)` obs. So when bootstraping, model can be built on seleteced samples and validated against the OOB samples.
+
+```{r}
+rsample::bootstraps(ames, times = 10)
+```
+
+### .632 and .632+ bootstrapping method
+
+In 1983, Bradly Efron described the *.632 Estimate*, a further improvement to address the pessimistic bias of the bootstrap.
+
+This bias in the classic bootstrap method (OOB method) originates from the fact that bootstrap sample contains approximately only 63.2% of the unique samples from the original training set.
+
+*.632 method* attempts to address both the `pessimistic bias of the estimate` and `optimistic bias of the model overfit`. *.632+* method uses more involved formula for computing the weight instead of the fixed weight `w = 0.632`.
+
+
+## Hyperparameter tuning
+
+Hyperparameters are parameters of the machine learning algorithm that control the model complexity and therefore, control the bias-variance tradeoff.
+
+For automated hyperparameter tuning we use *grid search*. And there are many method of grid search
+
+- full cartesian grid search
+- random grid search
+- early stopping grid search
+- adaptive resampling
+
+

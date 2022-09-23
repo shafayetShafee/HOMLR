@@ -225,3 +225,73 @@ For automated hyperparameter tuning we use *grid search*. And there are many met
 - adaptive resampling
 
 
+## Measures from confusion matrix
+
+- **Accuracy**: Overall how often the model is accurate?
+
+$$ Accuracy = \frac{TP + TN}{total} $$
+
+- **Precision**: How accurately the classifier predicts the events?
+
+$$ Precision = \frac{TP}{TP + FP} $$
+
+- **Sensitivity**: How accurately does the classifier classify actual events?
+
+$$ Sensitivity = \frac{TP}{TP + FN} $$
+
+- **Specificity**: How accurately the classifier classify actual non-events?
+
+$$ Specificity = \frac{TN}{TN + FP} $$
+
+- **ROC curve**: A plot of True positive rate vs False Positive rate.
+
+
+## Putting the process together
+
+```{r}
+# ames housing data
+ames <- AmesHousing::make_ames()
+
+set.seed(123)
+
+# stratified sampling with the rsample package
+split <- initial_split(ames, prop = 0.7, strata = "Sale_Price")
+ames_train <- training(split)
+ames_test <- testing(split)
+```
+
+
+Now we are going to apply a k-nearest neighbor regressor to the ames data.
+
+
+```{r, cache=TRUE}
+# specify a resampling strategy
+cv <- caret::trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 5
+)
+
+# create a grid of hyperparameter values (for grid-search)
+hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
+
+# Tune a knn model using the grid search
+knn_fit <- caret::train(
+  Sale_Price ~ .,
+  data = ames_train,
+  method = "knn",
+  trControl = cv,
+  tuneGrid = hyper_grid,
+  metric = "RMSE"
+)
+```
+
+
+```{r}
+knn_fit
+```
+
+```{r}
+ggplot(knn_fit)
+```
+

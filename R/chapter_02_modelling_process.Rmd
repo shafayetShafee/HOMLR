@@ -1,23 +1,15 @@
 ---
 title: "Modelling Process"
-author: "shafayet"
+author: "Shafayet khan Shafee"
 date: "`r Sys.Date()`"
-output: 
-  cleanrmd::html_document_clean:
-    theme: almond
+output:
+  rmdformats::downcute:
+    self_contained: true
+    downcute_theme: "chaos"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
-```
-
-
-```{css, echo = FALSE}
-body {
-  margin: 0 auto;
-  max-width: 750px;
-  padding: 2rem;
-}
 ```
 
 
@@ -264,7 +256,7 @@ ames_test <- testing(split)
 Now we are going to apply a k-nearest neighbor regressor to the ames data.
 
 
-```{r, cache=TRUE}
+```{r}
 # specify a resampling strategy
 cv <- caret::trainControl(
   method = "repeatedcv",
@@ -275,21 +267,24 @@ cv <- caret::trainControl(
 # create a grid of hyperparameter values (for grid-search)
 hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
 
-# Tune a knn model using the grid search
-knn_fit <- caret::train(
-  Sale_Price ~ .,
-  data = ames_train,
-  method = "knn",
-  trControl = cv,
-  tuneGrid = hyper_grid,
-  metric = "RMSE"
+# using xfun::cache_rds just to cache the time consuming
+# modelling process, nothing important related to the model process itself
+
+xfun::cache_rds({
+  # Tune a knn model using the grid search
+  knn_fit <- caret::train(
+    Sale_Price ~ .,
+    data = ames_train,
+    method = "knn",
+    trControl = cv,
+    tuneGrid = hyper_grid,
+    metric = "RMSE"
 )
+  
+  knn_fit
+})
 ```
 
-
-```{r}
-knn_fit
-```
 
 ```{r}
 ggplot(knn_fit)

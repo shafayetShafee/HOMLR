@@ -1,11 +1,14 @@
 ---
 title: "Modelling Process"
-author: "Shafayet khan Shafee"
-date: "`r Sys.Date()`"
 output:
   rmdformats::downcute:
     self_contained: true
     downcute_theme: "chaos"
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    code_folding: show
+    toc_depth: 3
 ---
 
 ```{r setup, include=FALSE}
@@ -34,7 +37,7 @@ library(caret)
 ames <- AmesHousing::make_ames()
 # ames_h2o <- as.h2o(ames)
  
-DT::datatable(ames, options = list(scrollX = TRUE))
+DT::datatable(ames)
 
 class(ames)
 # class(ames_h2o)
@@ -43,7 +46,7 @@ class(ames)
 churn <- modeldata::attrition %>% 
   mutate(across(where(is.ordered), .fns = factor, ordered = FALSE))
 
-DT::datatable(churn, options = list(scrollX = TRUE))
+DT::datatable(churn)
 
 # churn_h2o <- as.h2o(churn)
 ```
@@ -257,6 +260,7 @@ Now we are going to apply a k-nearest neighbor regressor to the ames data.
 
 
 ```{r}
+
 # specify a resampling strategy
 cv <- caret::trainControl(
   method = "repeatedcv",
@@ -281,12 +285,11 @@ xfun::cache_rds({
     metric = "RMSE"
 )
   
-  knn_fit
-})
+ knn_fit
+
+ ggplot(knn_fit)
+
+}, dir = here::here("R/cache", "cache_"), file = "knn.rds")
 ```
 
-
-```{r}
-ggplot(knn_fit)
-```
 

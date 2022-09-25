@@ -1,0 +1,173 @@
+---
+title: "Feature and Target Engineering"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    downcute_theme: "chaos"
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    code_folding: show
+    toc_depth: 3
+---
+
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE)
+```
+
+
+```{r prerequisites, message=FALSE}
+
+library(dplyr)
+library(ggplot2)
+library(visdat)
+
+library(caret)
+library(recipes)
+
+# ames housing data
+ames <- AmesHousing::make_ames()
+
+set.seed(123)
+
+# stratified sampling with the rsample package
+split <- rsample::initial_split(ames, prop = 0.7, strata = "Sale_Price")
+ames_train <- rsample::training(split)
+ames_test <- rsample::testing(split)
+```
+
+## Target Engineering
+
+There are two main approaches to help correct for positively skewed target variables.
+
+**1. Normalize with log-transformation**
+
+```{r}
+ames_recipe <- recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_log(all_outcomes())
+
+ames_recipe
+```
+
+If the response has negative values or zeros then log transform will produce `NaNs` and `-Infs` respectively. If the nonpositive response values are small (in between -0.99 to 0), then using `log1p()` (which adds 1 prior to applying log transform) could be an option. (similarly there's an `offset` argument for `step_log`)
+
+```{r}
+recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_log(all_outcomes(), offset = 1)
+```
+
+But if the data contains neg values $\le -1$, we need to use Yeo-Johnson transformation.
+
+**2. Use a Box-Cox transformation**
+
+Its more flexible than log-transformation. Yeo-Johnson transformation is very similar to Box-cox, but doesn't require the input variables to be strictly positive.
+
+```{r}
+ames_recipe <- recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_BoxCox(all_outcomes())
+```
+
+
+```{r}
+recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_YeoJohnson(all_outcomes())
+```
+
+## Dealing with Missingness
+
+Data can missing for many different reasons.
+
+- **Informative missingness**: Implies a structural cause for data missing and happens due to defficiencies how the data was collected or due to abnormalities in the observational environment. So, such missingness can provide some insight. we can label such missing values as a unique category (such as, `"None"`).
+
+- **Missingness at random (MAR)**: missing values occur independently of the data collection process and depending on the data-size we may impute or delete them.
+
+- **GLM models, neural network, svm cannot handles missingness**
+- **Tree based models have built-in procedure to handle missingness**
+
+But its better to handle missingness before the modelling process.
+
+
+### Visualizing missing values
+
+```{r}
+sum(is.na(AmesHousing::ames_raw))
+```
+
+We can use heatmaps to visualize the $dist^n$ of missing values for small to medium sized data.
+
+
+```{r, fig.height=10}
+AmesHousing::ames_raw %>% 
+  is.na() %>% 
+  reshape2::melt() %>% 
+  ggplot(aes(Var2, Var1, fill = value)) +
+  geom_raster() +
+  coord_flip() + 
+  scale_y_continuous(NULL, expand = c(0, 0)) +
+  scale_fill_grey(name = "", 
+                  labels = c("Present", "Missing")) + 
+  theme(axis.text.y = element_text(size = 10))
+```
+
+```{r}
+AmesHousing::ames_raw %>% 
+  filter(`Garage Cars` == 0 & `Garage Area` == 0) %>% 
+  select(starts_with("Garage"))
+```
+
+we see that for houses whose have no Garage Cars and Garage Area, all related variables about Garage have missing values. So this missing is informative. All `NA` values for these variables may be imputed with a `"None"` category.
+
+
+```{r, fig.height=6, fig.width=12}
+visdat::vis_miss(AmesHousing::ames_raw, cluster = TRUE) + 
+  theme(
+    axis.text.x.top = element_text(size = 8, angle = 90)
+  )
+```
+
+
+### Imputation
+
+Imputation is the process of replacing the missing values with the best guessed value.
+
+We can perform imputation based on mean, median or mode (for categorical) of a feature. Also as an alternative, we can do model based imputation (KNN or tree based imputation).
+
+#### Estimated Statistic based imputation
+
+```{r}
+ames_recipe  %>% 
+  step_impute_median(Gr_Liv_Area)
+
+```
+
+#### KNN based imputation
+
+KNN imputes missing values by identifying obsn with missing values at first and then identify other similar (based on other feature) obsns and use the values from these nearest neighbor to impute missing values.
+
+In this method, missing value for a given obsn is treated as response and predicted by the avg (for quantitative values) or mode (for categorical values) of the k-nearest neighbors.
+
+For small to medium sized data, knn imputation can be used. For large data, its better avoided.
+
+
+```{r}
+ames_recipe %>% 
+  step_impute_knn(all_predictors(), neighbors = 6)
+```
+
+#### Bagged tree based imputation
+
+Bagged trees offer a compromise between predictive and computational burden.
+
+It works similar as knn (ie. identify missing val as response)
+
+
+```{r}
+ames_recipe %>% 
+  step_impute_bag(all_predictors())
+```
+
+
+
+

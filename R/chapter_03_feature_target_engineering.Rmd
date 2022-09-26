@@ -169,5 +169,83 @@ ames_recipe %>%
 ```
 
 
+## Feature Filtering
 
+Features with zero variance and near zero variance should be removed. Because they provide no useful information for the model.
+
+we can detect them in the following way
+
+```{r}
+caret::nearZeroVar(ames_train, saveMetrics = TRUE) %>% 
+  tibble::rownames_to_column() %>% 
+  filter(nzv) %>% 
+  DT::datatable()
+
+```
+
+
+```{r}
+ames_recipe %>% 
+  step_nzv(all_nominal())
+```
+
+## Numeric feature Engineering
+
+### handling skewness
+
+Models that have parametric distributional assumption can greatly affected by the skewness of numeric feature. So to minimize the skewness we can consider either box-cox transformation or yeo-johnson transformation.
+
+
+```{r}
+recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_YeoJohnson(all_numeric())
+```
+
+### standardization
+
+```{r}
+ames_recipe %>% 
+  step_center(all_numeric(), -all_outcomes()) %>% 
+  step_scale(all_numeric(), -all_outcomes())
+```
+
+## Categorical feature engineering
+
+
+### lumping (Reducing categories)
+
+We can reduce the categories with few observations. Also for numeric feature, binning seems sometime very useful
+
+```{r}
+count(ames_train, Neighborhood) %>% arrange(n)
+
+count(ames_train, Screen_Porch) %>% arrange(n)
+```
+
+However,
+
+- Lumping should be done sparingly, as this sometimes may lead to loss in model performance
+
+- **Tree based models often perform exceptionally well with high cardinality features and are not impacted by levels with few obsn**
+
+```{r}
+# lump levels for two features
+lumping <- recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_other(Neighborhood, threshold = 0.01, other = "other") %>% 
+  step_other(Screen_Porch, threshold = 0.1, other = ">0")
+
+
+# preping and baking
+apply_2_training <- prep(lumping, training = ames_train) %>% 
+  bake(ames_train)
+```
+
+
+```{r}
+count(apply_2_training, Neighborhood) %>% arrange(n)
+```
+
+```{r}
+count(apply_2_training, Screen_Porch) %>% arrange(n)
+```
 

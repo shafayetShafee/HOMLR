@@ -249,3 +249,60 @@ count(apply_2_training, Neighborhood) %>% arrange(n)
 count(apply_2_training, Screen_Porch) %>% arrange(n)
 ```
 
+
+### One-hot and dummy encoding
+
+In one hot encoding we create separate variable for each level of a categorical variable. This is called **less than full rank encoding**, but this creates perfect multicollinearity which caused problems in some predictive modelling algorithm like OLS, neural net.
+
+Alternatively, we can do dummy encoding, where we drop one of the levels and create one less variable than the number of categorical levels. This is **full-rank encoding**.
+
+
+```{r}
+recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_dummy(all_nominal(), one_hot = TRUE)
+```
+
+### Label encoding and Ordinal encoding
+
+Label encoding is the process of turning the categorical levels into integers. Now if the categorical variable is a factor with prespecified levels then numeric conversion will be in level order, otherwise it will be in alphabetic order.
+
+```{r}
+# original categories
+ames_train %>% count(MS_SubClass)
+
+# label encoded
+recipe(Sale_Price ~ . , data = ames_train) %>% 
+  step_integer(MS_SubClass) %>% 
+  prep(ames_train) %>% 
+  bake(ames_train) %>% 
+  count(MS_SubClass)
+```
+
+Now we should be careful about label encoding unordered categorical features because most models will treat them as ordered numeric features. But label encoding is a natural choice for ordered factors, in which case it is known as Ordinal Encoding.
+
+
+```{r}
+# original category with natural order
+ames_train %>% count(Overall_Qual)
+
+# ordinal encoding
+recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_integer(Overall_Qual) %>% 
+  prep(ames_train) %>% 
+  bake(ames_train) %>% 
+  count(Overall_Qual)
+```
+
+
+## Dimension reduction
+
+Its an alternative approach to automatically filter out non-informative approach.
+
+```{r}
+recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_center(all_numeric()) %>% 
+  step_scale(all_numeric()) %>% 
+  step_pca(all_numeric(), threshold = 0.95)
+
+```
+

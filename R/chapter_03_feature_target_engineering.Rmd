@@ -306,3 +306,103 @@ recipe(Sale_Price ~ ., data = ames_train) %>%
 
 ```
 
+
+## Implementation
+
+### Some sequential steps and tips
+
+- If we need to use log or Box-Cox transformation, do not standardize data before the transformation which will generate negative values and log or box-cox transform can not handle neg values. Or, consider the Yeo-Johnson transformation.
+
+- Standardized the numeric features first and then do the one hot or dummy encoding. Otherwise if we do dummy or one-hot encoding at first which will create sparse data and then do standardization, sparse data will be turned into dense data which may result into computational inefficiency.
+
+- If we need to do lumping, do so before one-hot/dummy encoding
+
+- We need to do dimension reduction (i.e. pca) on numeric feature and then do one-hot/dummy encoding on categorical feature.
+
+
+So one suggested order of potential feature is,
+
+1. Filter out zero or near zero variance features.
+2. perform imputation if required
+3. normalize and standardize the numeric feature.
+4. Perform pca on numeric feature.
+5. Perform dummy/one-hot encode.
+
+## Data Leakage
+
+Data Leakage occurs when information outside the training data is used to build the model and it occurs mostly in the pre-processing steps. To minimize this, feature engineering should be applied in isolation (i.e. independently) in each resampling iteration.
+
+
+
+## Putting the process together
+
+There are three main steps in creating and applying feature engineering with the    `recipes` package, which is creating `recipe`, `prep` (prepare) on the training data and then `bake`.
+
+> TODO: Need to understand more about `prep` and `bake`
+
+For now we are using `{caret}`
+
+
+```{r}
+recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_integer(matches("Qual|Cond|QC|Qu")) %>% 
+  prep(ames_train) %>% 
+  bake(ames_train) %>% 
+  select(matches("Qual|Cond|QC|Qu")) %>% 
+  DT::datatable()
+```
+
+> I am not sure why we are doing ordinal encoding before the pca, I though we would do pca on numeric feature first and then do ordinal encoding or dummy/one hot encoding.
+
+
+Any way back to the usual flow,
+
+```{r}
+blueprint <- recipe(Sale_Price ~ ., data = ames_train) %>% 
+  step_nzv(all_nominal()) %>% 
+  step_integer(matches("Qual|Cond|QC|Qu")) %>% 
+  step_center(all_numeric(), -all_outcomes()) %>% 
+  step_scale(all_numeric(), -all_outcomes()) %>% 
+  step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE)
+```
+
+
+```{r}
+# specify the resampling plan
+cv <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 5
+)
+```
+
+
+```{r}
+# hyper param grid
+hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
+```
+
+
+```{r knn_model_fit}
+# tune a knn model using grid search
+xfun::cache_rds({
+  # Tune a knn model using the grid search
+  knn_fit2 <- caret::train(
+    blueprint,
+    data = ames_train,
+    method = "knn",
+    trControl = cv,
+    tuneGrid = hyper_grid,
+    metric = "RMSE"
+)
+  
+ knn_fit2
+
+ ggplot(knn_fit2)
+
+}, dir = here::here("R/cache", "chap_03_cache_"), file = "knn.rds")
+```
+
+
+
+

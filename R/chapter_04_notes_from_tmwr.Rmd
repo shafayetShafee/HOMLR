@@ -98,4 +98,23 @@ ames_test_small %>%
   bind_cols(predict(tree_fit, ames_test_small))
 ```
 
+## Creating Workflow
+
+```{r}
+lm_model <- linear_reg() %>% set_engine("lm")
+
+lm_wflow <- 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_variables(
+    outcomes = Sale_Price, 
+    predictors = c(Longitude, Latitude)
+  )
+
+lm_wflow
+
+lm_fit <- fit(lm_wflow, ames_train)
+
+lm_fit
+```
 

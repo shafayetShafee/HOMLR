@@ -1,0 +1,101 @@
+---
+title: "Notes from TMWR"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    downcute_theme: "chaos"
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    code_folding: show
+    toc_depth: 3
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+## Spending our Data (i.e. Data splitting )
+
+> **Its really critical to look at the test set only once; otherwise it becomes the part of the modelling process**
+
+
+```{r}
+library(tidymodels)
+
+data(ames)
+ames <- ames %>% 
+  mutate(Sale_Price = log10(Sale_Price))
+
+set.seed(502)
+ames_split <- initial_split(ames, prop = 0.8, strata = Sale_Price)
+ames_train <- training(ames_split)
+ames_test <- testing(ames_split)
+```
+
+## Fitting model with `{parsnip}`
+
+### Fitting a linear regression model
+
+
+```{r}
+# model fitting
+lm_form_fit <- linear_reg() %>% 
+  set_engine("lm") %>% 
+  fit(Sale_Price ~ Longitude + Latitude, data = ames_train)
+
+lm_form_fit
+```
+```{r}
+class(lm_form_fit)
+
+class(lm_form_fit %>% extract_fit_engine())
+```
+
+```{r}
+# extracting the result
+lm_form_fit %>% extract_fit_engine()
+lm_form_fit %>% extract_fit_engine() %>% vcov()
+
+model_res <- lm_form_fit %>% 
+  extract_fit_engine() %>% 
+  summary()
+
+param_est <- coef(model_res)
+param_est
+
+tidy(lm_form_fit %>% extract_fit_engine())
+```
+
+```{r}
+# prediction
+ames_test_small <- ames_test %>% slice(1:5)
+
+predict(lm_form_fit, new_data = ames_test_small)
+
+ames_test_small %>% 
+  select(Sale_Price) %>% 
+  bind_cols(predict(lm_form_fit, ames_test_small)) %>% 
+  # adding 95% pred interval
+  bind_cols(predict(lm_form_fit, ames_test_small, type = "pred_int"))
+```
+
+
+### Fitting a decision tree model
+
+```{r}
+# fitting a model
+tree_model <- decision_tree(min_n = 2) %>% 
+  set_engine("rpart") %>% 
+  set_mode("regression")
+
+tree_fit <- tree_model %>% 
+  fit(Sale_Price ~ Longitude + Latitude, data = ames_train)
+
+ames_test_small %>% 
+  select(Sale_Price) %>% 
+  bind_cols(predict(tree_fit, ames_test_small))
+```
+
+
